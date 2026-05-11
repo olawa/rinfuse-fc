@@ -4,11 +4,13 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-/// A parsed row from a FusionCatcher candidate report with source info.
+/// A parsed row from a FusionCatcher candidate report with source info and counts.
 #[derive(Debug, Clone)]
 pub struct FcCandidateWithSource {
     pub gene_5p: String,
     pub gene_3p: String,
+    pub spanning_pairs: Option<u32>,
+    pub split_reads: Option<u32>,
     /// All raw TSV fields from the line.
     pub raw_fields: Vec<String>,
     pub source: PathBuf,
@@ -64,7 +66,13 @@ impl FcOutputDir {
         Ok(out)
     }
 
-    fn scan_dir(&mut self, dir: &Path, depth: usize, recursive: bool, max_depth: usize) -> Result<()> {
+    fn scan_dir(
+        &mut self,
+        dir: &Path,
+        depth: usize,
+        recursive: bool,
+        max_depth: usize,
+    ) -> Result<()> {
         if depth > max_depth {
             return Ok(());
         }
@@ -72,7 +80,8 @@ impl FcOutputDir {
         let entries = match fs::read_dir(dir) {
             Ok(e) => e,
             Err(e) => {
-                self.warnings.push(format!("cannot read directory {}: {}", dir.display(), e));
+                self.warnings
+                    .push(format!("cannot read directory {}: {}", dir.display(), e));
                 return Ok(());
             }
         };
@@ -108,19 +117,33 @@ impl FcOutputDir {
         Ok(all_candidates)
     }
 
-    fn parse_candidate_file(&self, path: &Path) -> Result<Vec<FcCandidateWithSource>> {
+    /// Parse a single candidate report file.
+    pub fn parse_candidate_file(&self, path: &Path) -> Result<Vec<FcCandidateWithSource>> {
         let file = fs::File::open(path)
             .with_context(|| format!("cannot open candidate report {}", path.display()))?;
         let reader = BufReader::new(file);
         let mut candidates = Vec::new();
+        let mut is_rinfuse_format = false;
 
-        for line in reader.lines() {
+        for (i, line) in reader.lines().enumerate() {
             let line = line?;
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
             let fields: Vec<String> = trimmed.split('\t').map(|s| s.to_string()).collect();
+
+            // Detect format from header (usually line 0)
+            if i == 0
+                && fields.len() >= 4
+                && fields[0] == "Gene_5p"
+                && fields[1] == "Gene_3p"
+                && fields[2] == "Source"
+            {
+                is_rinfuse_format = true;
+                continue;
+            }
+
             // Skip header rows (col 0 starts with "Gene" or "gene")
             if fields
                 .first()
@@ -132,11 +155,39 @@ impl FcOutputDir {
             if fields.len() < 2 {
                 continue;
             }
+
+            let gene_5p = fields[0].clone();
+            let gene_3p = fields[1].clone();
+            let mut spanning_pairs = None;
+            let mut split_reads = None;
+            let raw_fields = fields.clone();
+            let mut source = path.to_path_buf();
+
+            if is_rinfuse_format && fields.len() >= 4 {
+                // Rinfuse format: Gene_5p, Gene_3p, Source, Raw_Line...
+                // The original fields are in the 4th column onwards if they were joined,
+                // but wait, my write_candidates_tsv joined them with tabs.
+                // So fields[3..] are the original fields.
+                source = PathBuf::from(&fields[2]);
+                if fields.len() >= 6 {
+                    spanning_pairs = fields[5].parse::<u32>().ok();
+                }
+                if fields.len() >= 7 {
+                    split_reads = fields[6].parse::<u32>().ok();
+                }
+            } else {
+                // Original FC format
+                spanning_pairs = fields.get(2).and_then(|s| s.parse::<u32>().ok());
+                split_reads = fields.get(3).and_then(|s| s.parse::<u32>().ok());
+            }
+
             candidates.push(FcCandidateWithSource {
-                gene_5p: fields[0].clone(),
-                gene_3p: fields[1].clone(),
-                raw_fields: fields,
-                source: path.to_path_buf(),
+                gene_5p,
+                gene_3p,
+                spanning_pairs,
+                split_reads,
+                raw_fields,
+                source,
             });
         }
 

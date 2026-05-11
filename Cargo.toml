@@ -3,6 +3,8 @@ members = [
     "crates/rinfuse-core",
     "crates/rinfuse-io",
     "crates/rinfuse-cli",
+    "crates/rinfuse-orchestrator",
+    "crates/rinfuse-fc",
 ]
 resolver = "2"
 

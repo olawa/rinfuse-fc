@@ -11,14 +11,88 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Extract read records by read ID from FASTQ files.
+    /// Extract reads from FASTQ based on read IDs.
     ExtractReads(ExtractReadsArgs),
 
-    /// Inspect an existing FusionCatcher output directory.
+    /// Inspect a FusionCatcher output directory.
     InspectFc(InspectFcArgs),
 
-    /// Compare FusionCatcher and rinfuse-fc outputs.
+    /// Compare candidate fusions between two reports.
     Compare(CompareArgs),
+
+    /// [DEV/TEST] Run an external command and record manifest/logs.
+    RunCommand(RunCommandArgs),
+
+    /// Run STAR aligner to collect chimeric reads.
+    RunStar(RunStarArgs),
+
+    /// Parse a STAR Chimeric.out.junction file into typed evidence.
+    ParseStar(ParseStarArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ParseStarArgs {
+    /// Path to STAR Chimeric.out.junction file.
+    #[arg(long)]
+    pub junction: PathBuf,
+
+    /// Output directory for junction JSONL, TSV and parse summary.
+    #[arg(long)]
+    pub out: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct RunStarArgs {
+    /// Input FASTQ files (comma-separated or repeatable).
+    #[arg(long, value_delimiter = ',')]
+    pub reads: Vec<PathBuf>,
+
+    /// Path to STAR genome index directory.
+    #[arg(long)]
+    pub star_index: PathBuf,
+
+    /// Output directory.
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Number of threads for STAR.
+    #[arg(long, default_value_t = 1)]
+    pub threads: u32,
+
+    /// Path to STAR binary.
+    #[arg(long, default_value = "STAR")]
+    pub star_bin: String,
+
+    /// Dry-run mode.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+
+    /// Extra arguments for STAR.
+    #[arg(long)]
+    pub extra_star_arg: Vec<String>,
+
+    /// Parse Chimeric.out.junction after alignment and write evidence files.
+    #[arg(long, default_value_t = false)]
+    pub parse: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct RunCommandArgs {
+    /// Program to execute.
+    #[arg(long)]
+    pub program: String,
+
+    /// Arguments for the program (repeatable).
+    #[arg(long)]
+    pub arg: Vec<String>,
+
+    /// Output directory for manifest and logs.
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Dry-run mode (do not execute).
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -69,12 +143,19 @@ pub struct InspectFcArgs {
 
 #[derive(Debug, Args)]
 pub struct CompareArgs {
+    /// FusionCatcher output directory or report file.
     #[arg(long)]
     pub fc: PathBuf,
 
+    /// rinfuse-fc output directory or candidates.tsv.
     #[arg(long)]
     pub rs: PathBuf,
 
+    /// Output comparison TSV path.
     #[arg(long)]
     pub out: PathBuf,
+
+    /// Focus on specific genes (repeatable or comma-separated).
+    #[arg(long, value_delimiter = ',')]
+    pub focus_gene: Vec<String>,
 }

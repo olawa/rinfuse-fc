@@ -11,9 +11,15 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
 clap.workspace = true
 rinfuse-core = { path = "../rinfuse-core" }
 rinfuse-io = { path = "../rinfuse-io" }
+rinfuse-orchestrator = { path = "../rinfuse-orchestrator" }
+rinfuse-fc = { path = "../rinfuse-fc" }
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

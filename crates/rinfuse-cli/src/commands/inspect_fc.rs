@@ -158,7 +158,11 @@ fn write_summary_md(
     writeln!(writer, "# rinfuse-fc Inspection Summary\n")?;
     writeln!(writer, "## Discovery")?;
     writeln!(writer, "- **Root**: `{}`", fc_dir.root.display())?;
-    writeln!(writer, "- **Scanned Files**: {}", fc_dir.scanned_files.len())?;
+    writeln!(
+        writer,
+        "- **Scanned Files**: {}",
+        fc_dir.scanned_files.len()
+    )?;
     writeln!(
         writer,
         "- **Candidate Reports**: {}",

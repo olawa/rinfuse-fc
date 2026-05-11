@@ -1,9 +1,7 @@
-mod args;
-mod commands;
-
 use anyhow::Result;
-use args::{Cli, Commands};
 use clap::Parser;
+use rinfuse_cli::args::{Cli, Commands};
+use rinfuse_cli::commands;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -16,5 +14,8 @@ fn main() -> Result<()> {
         Commands::ExtractReads(args) => commands::extract_reads::run(args),
         Commands::InspectFc(args) => commands::inspect_fc::run(args),
         Commands::Compare(args) => commands::compare::run(args),
+        Commands::RunCommand(args) => commands::run_command::run(args),
+        Commands::RunStar(args) => commands::run_star::run(args),
+        Commands::ParseStar(args) => commands::parse_star::run(args),
     }
 }
