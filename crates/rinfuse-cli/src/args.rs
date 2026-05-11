@@ -28,6 +28,55 @@ pub enum Commands {
 
     /// Parse a STAR Chimeric.out.junction file into typed evidence.
     ParseStar(ParseStarArgs),
+
+    /// Aggregate STAR junctions into fusion candidates using gene annotations.
+    AggregateStar(AggregateStarArgs),
+
+    /// Validate sample by comparing FusionCatcher outputs against rinfuse-fc STAR candidates.
+    ValidateSample(ValidateSampleArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ValidateSampleArgs {
+    /// FusionCatcher output directory to inspect.
+    #[arg(long)]
+    pub fc_out: PathBuf,
+
+    /// Path to parsed STAR candidates TSV or JSONL file.
+    #[arg(long)]
+    pub star_candidates: PathBuf,
+
+    /// Optional comma-separated FASTQ paths to extract supporting reads.
+    #[arg(long, value_delimiter = ',')]
+    pub reads: Vec<PathBuf>,
+
+    /// Output directory for validation summary and reports.
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Focus on specific genes (repeatable or comma-separated).
+    #[arg(long, value_delimiter = ',')]
+    pub focus_gene: Vec<String>,
+}
+
+
+#[derive(Debug, Args)]
+pub struct AggregateStarArgs {
+    /// Path to parsed STAR junctions JSONL or raw Chimeric.out.junction.
+    #[arg(long)]
+    pub junctions: PathBuf,
+
+    /// Path to gene intervals TSV.
+    #[arg(long)]
+    pub genes: PathBuf,
+
+    /// Output directory for candidate TSV/JSONL.
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Optional specific genes to focus on (comma-separated or repeatable).
+    #[arg(long, value_delimiter = ',')]
+    pub focus_gene: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -74,6 +123,10 @@ pub struct RunStarArgs {
     /// Parse Chimeric.out.junction after alignment and write evidence files.
     #[arg(long, default_value_t = false)]
     pub parse: bool,
+
+    /// Optional path to gene intervals TSV. If provided with --parse, will automatically aggregate candidates.
+    #[arg(long)]
+    pub genes: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]

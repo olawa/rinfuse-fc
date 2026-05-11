@@ -4,6 +4,8 @@ use rinfuse_fc::steps::star::StarStep;
 use rinfuse_io::star::{
     parse_chimeric_junctions, write_junctions_jsonl, write_junctions_tsv, write_parse_summary,
 };
+use rinfuse_fc::steps::aggregate::aggregate_star_junctions;
+use crate::commands::aggregate_star::write_outputs as write_candidates;
 use rinfuse_orchestrator::{
     manifest::{StepManifest, StepStatus},
     timing, OrchestratorError, RunManifest,
@@ -84,6 +86,20 @@ pub fn run(args: RunStarArgs) -> Result<()> {
                     report.parse_warnings.len(),
                     evidence_dir.display()
                 );
+
+                if let Some(genes_path) = &args.genes {
+                    let candidates_dir = args.out.join("candidates");
+                    if !candidates_dir.exists() {
+                        fs::create_dir_all(&candidates_dir)?;
+                    }
+                    let candidates = aggregate_star_junctions(junction_path, genes_path)?;
+                    write_candidates(&candidates_dir, "star", &candidates)?;
+                    eprintln!(
+                        "Aggregated {} candidates → {}",
+                        candidates.len(),
+                        candidates_dir.display()
+                    );
+                }
             }
             None => {
                 eprintln!(
