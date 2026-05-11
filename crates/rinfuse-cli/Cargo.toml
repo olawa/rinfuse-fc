@@ -1,0 +1,18 @@
+[package]
+name = "rinfuse-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "rinfuse-fc"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+rinfuse-core = { path = "../rinfuse-core" }
+rinfuse-io = { path = "../rinfuse-io" }
+tracing.workspace = true
+tracing-subscriber.workspace = true
