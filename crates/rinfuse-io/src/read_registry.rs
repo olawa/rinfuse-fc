@@ -14,7 +14,9 @@ pub struct ReadRegistryBuildOptions {
 
 impl Default for ReadRegistryBuildOptions {
     fn default() -> Self {
-        Self { include_mates: true }
+        Self {
+            include_mates: true,
+        }
     }
 }
 
@@ -27,7 +29,8 @@ pub struct ReadRegistry {
 
 impl ReadRegistry {
     pub fn from_read_id_file(path: &Path) -> Result<Self> {
-        let file = File::open(path).with_context(|| format!("failed to open read id file {}", path.display()))?;
+        let file = File::open(path)
+            .with_context(|| format!("failed to open read id file {}", path.display()))?;
         let reader = BufReader::new(file);
         let mut requested_bases = HashSet::new();
 
@@ -49,7 +52,27 @@ impl ReadRegistry {
         })
     }
 
-    pub fn collect_from_fastq_paths(&mut self, read_paths: &[PathBuf], _opts: &ReadRegistryBuildOptions) -> Result<()> {
+    /// Build a registry from already-normalized base names (e.g. from fc_intermediates).
+    pub fn from_tokens(bases: &[String]) -> Self {
+        let mut requested_bases = HashSet::new();
+        for base in bases {
+            if !base.is_empty() {
+                requested_bases.insert(base.clone());
+            }
+        }
+        let missing_requested_bases = requested_bases.clone();
+        Self {
+            requested_bases,
+            found: HashMap::new(),
+            missing_requested_bases,
+        }
+    }
+
+    pub fn collect_from_fastq_paths(
+        &mut self,
+        read_paths: &[PathBuf],
+        _opts: &ReadRegistryBuildOptions,
+    ) -> Result<()> {
         for path in read_paths {
             self.collect_from_fastq_path(path)?;
         }
@@ -62,18 +85,23 @@ impl ReadRegistry {
             let normalized = normalize_read_name(&record.header);
             if self.requested_bases.contains(&normalized.base) {
                 self.missing_requested_bases.remove(&normalized.base);
-                self.found.insert((normalized.base, normalized.mate), record);
+                self.found
+                    .insert((normalized.base, normalized.mate), record);
             }
         }
         Ok(())
     }
 
     pub fn write_fastq(&self, out: &Path) -> Result<()> {
-        let file = File::create(out).with_context(|| format!("failed to create {}", out.display()))?;
+        let file =
+            File::create(out).with_context(|| format!("failed to create {}", out.display()))?;
         let mut writer = BufWriter::new(file);
 
         let mut keys: Vec<_> = self.found.keys().cloned().collect();
-        keys.sort_by(|a, b| a.0.cmp(&b.0).then(format!("{:?}", a.1).cmp(&format!("{:?}", b.1))));
+        keys.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then(format!("{:?}", a.1).cmp(&format!("{:?}", b.1)))
+        });
 
         for key in keys {
             if let Some(record) = self.found.get(&key) {
@@ -86,7 +114,8 @@ impl ReadRegistry {
     }
 
     pub fn write_missing(&self, out: &Path) -> Result<()> {
-        let file = File::create(out).with_context(|| format!("failed to create {}", out.display()))?;
+        let file =
+            File::create(out).with_context(|| format!("failed to create {}", out.display()))?;
         let mut writer = BufWriter::new(file);
         let mut missing: Vec<_> = self.missing_requested_bases.iter().collect();
         missing.sort();

@@ -11,3 +11,6 @@ flate2.workspace = true
 rinfuse-core = { path = "../rinfuse-core" }
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

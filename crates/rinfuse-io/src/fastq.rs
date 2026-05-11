@@ -58,10 +58,18 @@ impl<R: BufRead> FastqReader<R> {
         self.line_no += 3;
 
         if !header.starts_with('@') {
-            bail!("expected FASTQ header at line {}, got {:?}", self.line_no - 3, header.trim_end());
+            bail!(
+                "expected FASTQ header at line {}, got {:?}",
+                self.line_no - 3,
+                header.trim_end()
+            );
         }
         if !plus.starts_with('+') {
-            bail!("expected FASTQ plus line at line {}, got {:?}", self.line_no - 1, plus.trim_end());
+            bail!(
+                "expected FASTQ plus line at line {}, got {:?}",
+                self.line_no - 1,
+                plus.trim_end()
+            );
         }
 
         let seq = seq.trim_end_matches(['\n', '\r']).as_bytes().to_vec();

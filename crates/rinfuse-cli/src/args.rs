@@ -42,14 +42,29 @@ pub struct ExtractReadsArgs {
 
 #[derive(Debug, Args)]
 pub struct InspectFcArgs {
+    /// FusionCatcher output directory to inspect.
     #[arg(long)]
     pub fc_out: PathBuf,
 
+    /// Comma-separated FASTQ paths for read extraction.
     #[arg(long, value_delimiter = ',')]
     pub reads: Vec<PathBuf>,
 
+    /// Output directory for inspected results.
     #[arg(long)]
     pub out: PathBuf,
+
+    /// Scan fc-out recursively for reports and read IDs.
+    #[arg(long, default_value_t = false)]
+    pub recursive: bool,
+
+    /// Maximum depth for recursive scanning.
+    #[arg(long, default_value_t = 3)]
+    pub max_depth: usize,
+
+    /// Focus on specific genes (repeatable or comma-separated).
+    #[arg(long, value_delimiter = ',')]
+    pub focus_gene: Vec<String>,
 }
 
 #[derive(Debug, Args)]

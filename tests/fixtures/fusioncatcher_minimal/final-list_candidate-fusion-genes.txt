@@ -1,0 +1,3 @@
+Gene_1_symbol(5end_fusion_partner)	Gene_2_symbol(3end_fusion_partner)	Spanning_pairs	Spanning_unique_reads	Longest_anchor_found
+BCR	ABL1	10	5	42
+ETV6	RUNX1	3	2	31
