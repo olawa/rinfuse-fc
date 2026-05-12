@@ -24,8 +24,8 @@ pub fn run(args: AggregateStarArgs) -> Result<()> {
     if !focus_genes.is_empty() {
         let mut focus_candidates = Vec::new();
         for c in &candidates {
-            if focus_genes.contains(&c.gene_a.to_uppercase())
-                || focus_genes.contains(&c.gene_b.to_uppercase())
+            if focus_genes.contains(&c.gene_5p.to_uppercase())
+                || focus_genes.contains(&c.gene_3p.to_uppercase())
             {
                 focus_candidates.push(c.clone());
             }
@@ -72,7 +72,7 @@ pub fn write_outputs(
     use std::io::Write;
     writeln!(
         w_tsv,
-        "gene_a\tgene_b\tgene_id_a\tgene_id_b\tchrom_a\tchrom_b\tsupport_junction_count\tunique_read_count\tmax_overhang\tjunction_types\texample_reads"
+        "gene_5p\tgene_3p\tunordered_gene_a\tunordered_gene_b\tgene_id_5p\tgene_id_3p\tchrom_5p\tchrom_3p\tsupport_junction_count\tunique_read_count\tmax_overhang\tjunction_types\texample_reads"
     )?;
     for c in candidates {
         let jtypes = c
@@ -84,13 +84,15 @@ pub fn write_outputs(
         let reads = c.example_reads.join(",");
         writeln!(
             w_tsv,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            c.gene_a,
-            c.gene_b,
-            c.gene_id_a,
-            c.gene_id_b,
-            c.chrom_a,
-            c.chrom_b,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            c.gene_5p,
+            c.gene_3p,
+            c.unordered_gene_a,
+            c.unordered_gene_b,
+            c.gene_id_5p,
+            c.gene_id_3p,
+            c.chrom_5p,
+            c.chrom_3p,
             c.support_junction_count,
             c.unique_read_count,
             c.max_overhang,

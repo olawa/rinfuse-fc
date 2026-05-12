@@ -1,21 +1,11 @@
 use crate::args::CompareArgs;
 use anyhow::{Context, Result};
+use rinfuse_core::OrientedFusionPair;
 use rinfuse_io::fc_intermediates::{FcCandidateWithSource, FcOutputDir};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct NormalizedPair(String, String);
-
-impl NormalizedPair {
-    fn new(a: &str, b: &str) -> Self {
-        let mut genes = [a.to_string(), b.to_string()];
-        genes.sort();
-        Self(genes[0].clone(), genes[1].clone())
-    }
-}
 
 pub fn run(args: CompareArgs) -> Result<()> {
     let fc_candidates = load_candidates(&args.fc)?;
@@ -23,21 +13,21 @@ pub fn run(args: CompareArgs) -> Result<()> {
 
     let mut fc_map = HashMap::new();
     for cand in fc_candidates {
-        let pair = NormalizedPair::new(&cand.gene_5p, &cand.gene_3p);
+        let pair = OrientedFusionPair::new(&cand.gene_5p, &cand.gene_3p);
         fc_map.insert(pair, cand);
     }
 
     let mut rs_map = HashMap::new();
     for cand in rs_candidates {
-        let pair = NormalizedPair::new(&cand.gene_5p, &cand.gene_3p);
+        let pair = OrientedFusionPair::new(&cand.gene_5p, &cand.gene_3p);
         rs_map.insert(pair, cand);
     }
 
-    let mut all_pairs: HashSet<NormalizedPair> = fc_map.keys().cloned().collect();
+    let mut all_pairs: HashSet<OrientedFusionPair> = fc_map.keys().cloned().collect();
     all_pairs.extend(rs_map.keys().cloned());
 
-    let mut sorted_pairs: Vec<NormalizedPair> = all_pairs.into_iter().collect();
-    sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let mut sorted_pairs: Vec<OrientedFusionPair> = all_pairs.into_iter().collect();
+    sorted_pairs.sort_by(|a, b| a.gene_5p.cmp(&b.gene_5p).then(a.gene_3p.cmp(&b.gene_3p)));
 
     // 1. Write compare.tsv
     let file = fs::File::create(&args.out)
@@ -46,7 +36,7 @@ pub fn run(args: CompareArgs) -> Result<()> {
 
     writeln!(
         writer,
-        "gene_a\tgene_b\tstatus\tfc_spanning\trs_spanning\tfc_split\trs_split\tfc_source\trs_source"
+        "gene_5p\tgene_3p\tunordered_gene_a\tunordered_gene_b\tstatus\tfc_spanning\trs_spanning\tfc_split\trs_split\tfc_source\trs_source"
     )?;
 
     let mut shared = 0;
@@ -56,11 +46,12 @@ pub fn run(args: CompareArgs) -> Result<()> {
     for pair in &sorted_pairs {
         let fc_opt = fc_map.get(pair);
         let rs_opt = rs_map.get(pair);
+        let unordered = pair.unordered();
 
         let status = match (fc_opt.is_some(), rs_opt.is_some()) {
             (true, true) => {
                 shared += 1;
-                "both"
+                "shared"
             }
             (true, false) => {
                 only_fc += 1;
@@ -96,9 +87,11 @@ pub fn run(args: CompareArgs) -> Result<()> {
 
         writeln!(
             writer,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            pair.0,
-            pair.1,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            pair.gene_5p,
+            pair.gene_3p,
+            unordered.gene_a,
+            unordered.gene_b,
             status,
             fc_spanning,
             rs_spanning,
@@ -123,14 +116,14 @@ pub fn run(args: CompareArgs) -> Result<()> {
     writeln!(sw, "## Stats")?;
     writeln!(sw, "- **Total FC Candidates**: {}", fc_map.len())?;
     writeln!(sw, "- **Total RS Candidates**: {}", rs_map.len())?;
-    writeln!(sw, "- **Shared**: {}", shared)?;
+    writeln!(sw, "- **Shared (orientation-aware)**: {}", shared)?;
     writeln!(sw, "- **Only FC**: {}", only_fc)?;
     writeln!(sw, "- **Only RS**: {}", only_rs)?;
 
     let focus_genes: HashSet<String> = args
         .focus_gene
         .iter()
-        .flat_map(|s| s.split(',').map(|g| g.trim().to_string()))
+        .flat_map(|s| s.split(',').map(|g| g.trim().to_uppercase()))
         .filter(|s| !s.is_empty())
         .collect();
 
@@ -138,15 +131,17 @@ pub fn run(args: CompareArgs) -> Result<()> {
         writeln!(sw, "\n## Focus Genes ({})", args.focus_gene.join(", "))?;
         writeln!(
             sw,
-            "| Gene A | Gene B | Status | FC Spanning | RS Spanning |"
+            "| Gene 5p | Gene 3p | Status | FC Spanning | RS Spanning |"
         )?;
         writeln!(sw, "|---|---|---|---|---|")?;
         for pair in &sorted_pairs {
-            if focus_genes.contains(&pair.0) || focus_genes.contains(&pair.1) {
+            if focus_genes.contains(&pair.gene_5p.to_uppercase())
+                || focus_genes.contains(&pair.gene_3p.to_uppercase())
+            {
                 let fc_opt = fc_map.get(pair);
                 let rs_opt = rs_map.get(pair);
                 let status = match (fc_opt.is_some(), rs_opt.is_some()) {
-                    (true, true) => "both",
+                    (true, true) => "shared",
                     (true, false) => "only_fc",
                     (false, true) => "only_rs",
                     _ => unreachable!(),
@@ -160,7 +155,7 @@ pub fn run(args: CompareArgs) -> Result<()> {
                 writeln!(
                     sw,
                     "| {} | {} | {} | {} | {} |",
-                    pair.0, pair.1, status, fc_spanning, rs_spanning
+                    pair.gene_5p, pair.gene_3p, status, fc_spanning, rs_spanning
                 )?;
             }
         }

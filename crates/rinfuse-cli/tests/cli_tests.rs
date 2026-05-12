@@ -31,15 +31,15 @@ mod compare_tests {
 
         assert!(out_tsv.exists());
         let content = fs::read_to_string(&out_tsv).unwrap();
-        // Should have 2 both, 0 only
-        assert!(content.contains("both"));
+        // Should have 2 shared, 0 only
+        assert!(content.contains("shared"));
         assert!(!content.contains("only_fc"));
         assert!(!content.contains("only_rs"));
 
         let md_path = out_tsv.with_extension("md");
         assert!(md_path.exists());
         let md_content = fs::read_to_string(md_path).unwrap();
-        assert!(md_content.contains("- **Shared**: 2"));
+        assert!(md_content.contains("- **Shared (orientation-aware)**: 2"));
     }
 
     #[test]
@@ -62,12 +62,50 @@ mod compare_tests {
         rinfuse_cli::commands::compare::run(args).unwrap();
 
         let content = fs::read_to_string(&out_tsv).unwrap();
-        assert!(content.contains("both")); // BCR-ABL1
+        assert!(content.contains("shared")); // BCR-ABL1
         assert!(content.contains("only_fc")); // ETV6-RUNX1 (from fixture)
         assert!(content.contains("only_rs")); // ONLY_RS-GENE
 
         let md_content = fs::read_to_string(out_tsv.with_extension("md")).unwrap();
         assert!(md_content.contains("## Focus Genes (ONLY_RS)"));
-        assert!(md_content.contains("| GENE | ONLY_RS | only_rs |"));
+        assert!(md_content.contains("| ONLY_RS | GENE | only_rs |"));
+    }
+
+    #[test]
+    fn compare_treats_reversed_orientation_as_distinct() {
+        let temp = tempdir().unwrap();
+        let fc_tsv = temp.path().join("fc.tsv");
+        let rs_tsv = temp.path().join("rs.tsv");
+        let out_tsv = temp.path().join("compare.tsv");
+
+        fs::write(
+            &fc_tsv,
+            "Gene_5p\tGene_3p\tSource\tRaw\nBCR\tABL1\tfc\tBCR\tABL1\t10\t5\n",
+        )
+        .unwrap();
+        fs::write(
+            &rs_tsv,
+            "Gene_5p\tGene_3p\tSource\tRaw\nABL1\tBCR\trs\tABL1\tBCR\t8\t4\n",
+        )
+        .unwrap();
+
+        let args = rinfuse_cli::args::CompareArgs {
+            fc: fc_tsv,
+            rs: rs_tsv,
+            out: out_tsv.clone(),
+            focus_gene: vec!["BCR".to_string()],
+        };
+
+        rinfuse_cli::commands::compare::run(args).unwrap();
+
+        let content = fs::read_to_string(&out_tsv).unwrap();
+        assert!(content.contains("BCR\tABL1\tABL1\tBCR\tonly_fc"));
+        assert!(content.contains("ABL1\tBCR\tABL1\tBCR\tonly_rs"));
+        assert!(!content.contains("\tboth\t"));
+
+        let md_content = fs::read_to_string(out_tsv.with_extension("md")).unwrap();
+        assert!(md_content.contains("- **Shared (orientation-aware)**: 0"));
+        assert!(md_content.contains("| BCR | ABL1 | only_fc |"));
+        assert!(md_content.contains("| ABL1 | BCR | only_rs |"));
     }
 }

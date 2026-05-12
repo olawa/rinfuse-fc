@@ -2,6 +2,53 @@ use crate::evidence::Strand;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OrientedFusionPair {
+    pub gene_5p: String,
+    pub gene_3p: String,
+}
+
+impl OrientedFusionPair {
+    pub fn new(gene_5p: &str, gene_3p: &str) -> Self {
+        Self {
+            gene_5p: gene_5p.to_string(),
+            gene_3p: gene_3p.to_string(),
+        }
+    }
+
+    pub fn uppercased(gene_5p: &str, gene_3p: &str) -> Self {
+        Self {
+            gene_5p: gene_5p.to_uppercase(),
+            gene_3p: gene_3p.to_uppercase(),
+        }
+    }
+
+    pub fn unordered(&self) -> UnorderedGenePair {
+        UnorderedGenePair::new(&self.gene_5p, &self.gene_3p)
+    }
+
+    pub fn contains_gene(&self, gene: &str) -> bool {
+        self.gene_5p == gene || self.gene_3p == gene
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UnorderedGenePair {
+    pub gene_a: String,
+    pub gene_b: String,
+}
+
+impl UnorderedGenePair {
+    pub fn new(a: &str, b: &str) -> Self {
+        let mut genes = [a.to_string(), b.to_string()];
+        genes.sort();
+        Self {
+            gene_a: genes[0].clone(),
+            gene_b: genes[1].clone(),
+        }
+    }
+}
+
 /// A simple genomic interval representing a gene.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneInterval {
@@ -71,12 +118,20 @@ impl GeneAnnotationIndex {
 /// A preliminary fusion candidate aggregated from evidence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FusionCandidateLite {
-    pub gene_a: String,
-    pub gene_b: String,
-    pub gene_id_a: String,
-    pub gene_id_b: String,
-    pub chrom_a: String,
-    pub chrom_b: String,
+    #[serde(alias = "gene_a")]
+    pub gene_5p: String,
+    #[serde(alias = "gene_b")]
+    pub gene_3p: String,
+    pub unordered_gene_a: String,
+    pub unordered_gene_b: String,
+    #[serde(alias = "gene_id_a")]
+    pub gene_id_5p: String,
+    #[serde(alias = "gene_id_b")]
+    pub gene_id_3p: String,
+    #[serde(alias = "chrom_a")]
+    pub chrom_5p: String,
+    #[serde(alias = "chrom_b")]
+    pub chrom_3p: String,
     pub support_junction_count: u32,
     pub unique_read_count: u32,
     pub max_overhang: u32,

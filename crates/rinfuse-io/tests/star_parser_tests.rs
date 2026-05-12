@@ -14,20 +14,17 @@ fn parses_fixture_file_three_valid_rows() {
     let path = fixture_path();
     let (junctions, report) = parse_chimeric_junctions(&path).unwrap();
 
-    // fixture has 3 data rows + 1 comment + 1 blank -> 3 parsed
-    assert_eq!(report.parsed_ok, 3, "expected 3 parsed junctions");
-    assert!(
-        report.parse_warnings.is_empty(),
-        "unexpected warnings: {:?}",
-        report.parse_warnings
-    );
+    // fixture has 2 valid rows, 1 invalid 1-based coordinate row, and 1 comment line
+    assert_eq!(report.parsed_ok, 2, "expected 2 parsed junctions");
+    assert_eq!(report.coordinate_warnings, 1);
+    assert_eq!(report.parse_warnings.len(), 1);
     assert_eq!(report.skipped_empty, 1); // 1 comment line
 
     let first = &junctions[0];
     assert_eq!(first.seg1.chrom, "chr2");
     assert_eq!(first.seg2.chrom, "chr17");
-    assert_eq!(first.num_chimeric_reads, 5);
-    assert_eq!(first.max_overhang, 40);
+    assert_eq!(first.num_chimeric_reads, None);
+    assert_eq!(first.max_overhang, None);
 }
 
 #[test]
@@ -58,7 +55,7 @@ fn write_jsonl_produces_valid_lines() {
 
     let content = fs::read_to_string(&out).unwrap();
     let lines: Vec<&str> = content.lines().collect();
-    assert_eq!(lines.len(), 3);
+    assert_eq!(lines.len(), 2);
     // Each line should be valid JSON
     for line in &lines {
         let parsed: serde_json::Value = serde_json::from_str(line)
@@ -82,7 +79,7 @@ fn write_tsv_has_header_and_rows() {
         lines[0].starts_with("chrom1\t"),
         "first line should be header"
     );
-    assert_eq!(lines.len(), 4); // header + 3 data rows
+    assert_eq!(lines.len(), 3); // header + 2 data rows
 }
 
 #[test]
@@ -96,6 +93,66 @@ fn write_parse_summary_is_valid_json() {
 
     let content = fs::read_to_string(&out).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
-    assert_eq!(parsed["parsed_ok"], 3);
+    assert_eq!(parsed["parsed_ok"], 2);
     assert_eq!(parsed["skipped_empty"], 1);
+    assert_eq!(parsed["coordinate_warnings"], 1);
+}
+
+#[test]
+fn parses_standard_14_column_row_as_v14() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("v14.junction");
+    fs::write(
+        &path,
+        "chr1\t101\t+\tchr2\t201\t-\t1\t0\t0\tREAD1\t11\t25M\t31\t25M\n",
+    )
+    .unwrap();
+
+    let (junctions, report) = parse_chimeric_junctions(&path).unwrap();
+    assert_eq!(report.parsed_ok, 1);
+    assert_eq!(
+        junctions[0].source_format,
+        rinfuse_core::StarChimericSourceFormat::StarChimericV14
+    );
+    assert_eq!(junctions[0].raw_fields.len(), 14);
+}
+
+#[test]
+fn preserves_extra_columns_without_blind_support_interpretation() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("extra.junction");
+    fs::write(
+        &path,
+        "chr1\t101\t+\tchr2\t201\t-\t1\t0\t0\tREAD1\t11\t25M\t31\t25M\t5\t40\tEXTRA\n",
+    )
+    .unwrap();
+
+    let (junctions, report) = parse_chimeric_junctions(&path).unwrap();
+    assert_eq!(report.parsed_ok, 1);
+    assert_eq!(
+        junctions[0].source_format,
+        rinfuse_core::StarChimericSourceFormat::UnknownExtraColumns
+    );
+    assert_eq!(junctions[0].raw_fields.len(), 17);
+    assert_eq!(junctions[0].num_chimeric_reads, None);
+    assert_eq!(junctions[0].max_overhang, None);
+}
+
+#[test]
+fn zero_positions_produce_warnings_not_panics() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("zero_pos.junction");
+    fs::write(
+        &path,
+        "chr1\t0\t+\tchr2\t201\t-\t1\t0\t0\tREAD1\t0\t25M\t31\t25M\n",
+    )
+    .unwrap();
+
+    let (junctions, report) = parse_chimeric_junctions(&path).unwrap();
+    assert_eq!(junctions.len(), 0);
+    assert_eq!(report.coordinate_warnings, 1);
+    assert_eq!(report.parse_warnings.len(), 1);
+    assert!(report.parse_warnings[0]
+        .reason
+        .contains("invalid 1-based coordinate"));
 }

@@ -1,5 +1,7 @@
 use anyhow::Result;
-use rinfuse_core::{ChimericSegment, EvidenceSource, StarChimericJunction, Strand};
+use rinfuse_core::{
+    ChimericSegment, EvidenceSource, StarChimericJunction, StarChimericSourceFormat, Strand,
+};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -11,6 +13,10 @@ pub struct StarParseReport {
     pub total_lines: usize,
     pub parsed_ok: usize,
     pub skipped_empty: usize,
+    pub parsed_v14: usize,
+    pub parsed_extended: usize,
+    pub parsed_unknown_extra_columns: usize,
+    pub coordinate_warnings: usize,
     pub parse_warnings: Vec<ParseWarning>,
 }
 
@@ -49,9 +55,19 @@ pub fn parse_chimeric_junctions(
         match parse_junction_row(line_number, &fields, trimmed) {
             Ok(junction) => {
                 report.parsed_ok += 1;
+                match junction.source_format {
+                    StarChimericSourceFormat::StarChimericV14 => report.parsed_v14 += 1,
+                    StarChimericSourceFormat::StarChimericExtended => report.parsed_extended += 1,
+                    StarChimericSourceFormat::UnknownExtraColumns => {
+                        report.parsed_unknown_extra_columns += 1
+                    }
+                }
                 junctions.push(junction);
             }
             Err(reason) => {
+                if reason.contains("invalid 1-based coordinate") {
+                    report.coordinate_warnings += 1;
+                }
                 report.parse_warnings.push(ParseWarning {
                     line_number,
                     reason,
@@ -75,12 +91,10 @@ pub fn parse_chimeric_junctions(
 ///  7  repeat_left
 ///  8  repeat_right
 ///  9  read_name
-/// 10  start1  (position in read of segment 1)
+/// 10  start1  (position in read of segment 1, 1-based)
 /// 11  cigar1
-/// 12  start2  (position in read of segment 2)
+/// 12  start2  (position in read of segment 2, 1-based)
 /// 13  cigar2
-/// 14  num_chimeric_reads
-/// 15  max_overhang
 fn parse_junction_row(
     line_number: usize,
     fields: &[&str],
@@ -94,16 +108,13 @@ fn parse_junction_row(
         ));
     }
 
+    let source_format = detect_source_format(fields);
     let chrom1 = fields[0].to_string();
-    let pos1 = fields[1]
-        .parse::<u64>()
-        .map_err(|_| format!("line {}: invalid pos1 '{}'", line_number, fields[1]))?;
+    let pos1_1based = parse_nonzero_u64(fields[1], line_number, "pos1")?;
     let strand1 = parse_strand(fields[2], line_number, "strand1")?;
 
     let chrom2 = fields[3].to_string();
-    let pos2 = fields[4]
-        .parse::<u64>()
-        .map_err(|_| format!("line {}: invalid pos2 '{}'", line_number, fields[4]))?;
+    let pos2_1based = parse_nonzero_u64(fields[4], line_number, "pos2")?;
     let strand2 = parse_strand(fields[5], line_number, "strand2")?;
 
     let junction_type = fields[6].parse::<i32>().map_err(|_| {
@@ -122,40 +133,36 @@ fn parse_junction_row(
 
     let read_name = fields[9].to_string();
 
-    let start1 = fields[10]
-        .parse::<u64>()
-        .map_err(|_| format!("line {}: invalid start1 '{}'", line_number, fields[10]))?;
+    let start1_1based = parse_nonzero_u64(fields[10], line_number, "start1")?;
     let cigar1 = fields[11].to_string();
 
-    let start2 = fields[12]
-        .parse::<u64>()
-        .map_err(|_| format!("line {}: invalid start2 '{}'", line_number, fields[12]))?;
+    let start2_1based = parse_nonzero_u64(fields[12], line_number, "start2")?;
     let cigar2 = fields[13].to_string();
 
-    let num_chimeric_reads = fields
-        .get(14)
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(0);
-    let max_overhang = fields
-        .get(15)
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(0);
+    let (num_chimeric_reads, max_overhang) = match source_format {
+        StarChimericSourceFormat::StarChimericExtended => (
+            fields.get(14).and_then(|s| s.parse::<u32>().ok()),
+            fields.get(15).and_then(|s| s.parse::<u32>().ok()),
+        ),
+        StarChimericSourceFormat::StarChimericV14
+        | StarChimericSourceFormat::UnknownExtraColumns => (None, None),
+    };
 
     let raw_fields = fields.iter().map(|s| s.to_string()).collect();
 
     Ok(StarChimericJunction {
         seg1: ChimericSegment {
             chrom: chrom1,
-            genomic_pos: pos1,
+            pos_1based: pos1_1based,
             strand: strand1,
-            read_start: start1,
+            segment_start_1based: start1_1based,
             cigar: cigar1,
         },
         seg2: ChimericSegment {
             chrom: chrom2,
-            genomic_pos: pos2,
+            pos_1based: pos2_1based,
             strand: strand2,
-            read_start: start2,
+            segment_start_1based: start2_1based,
             cigar: cigar2,
         },
         junction_type,
@@ -165,8 +172,40 @@ fn parse_junction_row(
         num_chimeric_reads,
         max_overhang,
         source: EvidenceSource::Star,
+        source_format,
         raw_fields,
     })
+}
+
+fn detect_source_format(fields: &[&str]) -> StarChimericSourceFormat {
+    if fields.len() == 14 {
+        StarChimericSourceFormat::StarChimericV14
+    } else if is_known_extended_format(fields) {
+        StarChimericSourceFormat::StarChimericExtended
+    } else {
+        StarChimericSourceFormat::UnknownExtraColumns
+    }
+}
+
+fn is_known_extended_format(_fields: &[&str]) -> bool {
+    false
+}
+
+fn parse_nonzero_u64(
+    value: &str,
+    line_number: usize,
+    field_name: &str,
+) -> std::result::Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|_| format!("line {}: invalid {} '{}'", line_number, field_name, value))?;
+    if parsed == 0 {
+        return Err(format!(
+            "line {}: invalid 1-based coordinate for {} '{}'",
+            line_number, field_name, value
+        ));
+    }
+    Ok(parsed)
 }
 
 fn parse_strand(s: &str, line: usize, field: &str) -> std::result::Result<Strand, String> {
@@ -210,7 +249,7 @@ mod tests {
     use super::*;
 
     const FIXTURE_LINE: &str =
-        "chr2\t33459168\t+\tchr17\t37880992\t-\t1\t0\t0\tREAD_1/1\t20\t20M30S\t50\t30M20S\t5\t40";
+        "chr2\t33459168\t+\tchr17\t37880992\t-\t1\t0\t0\tREAD_1/1\t20\t20M30S\t50\t30M20S";
 
     #[test]
     fn parses_valid_row() {
@@ -219,14 +258,15 @@ mod tests {
         assert!(result.is_ok(), "{:?}", result);
         let j = result.unwrap();
         assert_eq!(j.seg1.chrom, "chr2");
-        assert_eq!(j.seg1.genomic_pos, 33_459_168);
+        assert_eq!(j.seg1.pos_1based, 33_459_168);
         assert_eq!(j.seg1.strand, Strand::Plus);
         assert_eq!(j.seg2.chrom, "chr17");
         assert_eq!(j.seg2.strand, Strand::Minus);
         assert_eq!(j.junction_type, 1);
-        assert_eq!(j.num_chimeric_reads, 5);
-        assert_eq!(j.max_overhang, 40);
+        assert_eq!(j.num_chimeric_reads, None);
+        assert_eq!(j.max_overhang, None);
         assert_eq!(j.read_name, "READ_1/1");
+        assert_eq!(j.source_format, StarChimericSourceFormat::StarChimericV14);
     }
 
     #[test]
@@ -248,14 +288,12 @@ mod tests {
     }
 
     #[test]
-    fn missing_optional_cols_defaults_to_zero() {
-        // Only 14 fields — no num_chimeric_reads or max_overhang
-        let short: Vec<&str> = FIXTURE_LINE.split('\t').take(14).collect();
-        let result = parse_junction_row(4, &short, "");
-        assert!(result.is_ok());
-        let j = result.unwrap();
-        assert_eq!(j.num_chimeric_reads, 0);
-        assert_eq!(j.max_overhang, 0);
+    fn zero_pos_produces_coordinate_warning_error() {
+        let mut parts: Vec<&str> = FIXTURE_LINE.split('\t').collect();
+        parts[1] = "0";
+        let result = parse_junction_row(4, &parts, "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("invalid 1-based coordinate"));
     }
 
     #[test]

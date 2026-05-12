@@ -20,8 +20,10 @@ struct SampleMetrics {
 #[derive(Debug)]
 struct CandidateRow {
     sample_id: String,
-    gene_a: String,
-    gene_b: String,
+    gene_5p: String,
+    gene_3p: String,
+    unordered_gene_a: String,
+    unordered_gene_b: String,
     status: String,
     fc_spanning: String,
     star_unique_reads: String,
@@ -101,22 +103,13 @@ pub fn run(args: ValidateCohortArgs) -> Result<()> {
                 continue;
             }
 
-            let gene_a = parts[0].to_string();
-            let gene_b = parts[1].to_string();
-            let status = parts[2].to_string();
-
-            let row = CandidateRow {
-                sample_id: sample_id.clone(),
-                gene_a: gene_a.clone(),
-                gene_b: gene_b.clone(),
-                status: status.clone(),
-                fc_spanning: parts[3].to_string(),
-                star_unique_reads: parts[4].to_string(),
-                fc_source: parts[5].to_string(),
+            let Some(row) = parse_validation_row(&sample_id, &parts) else {
+                continue;
             };
+            let status = row.status.clone();
 
-            let is_focus = focus_genes.contains(&gene_a.to_uppercase())
-                || focus_genes.contains(&gene_b.to_uppercase());
+            let is_focus = focus_genes.contains(&row.gene_5p.to_uppercase())
+                || focus_genes.contains(&row.gene_3p.to_uppercase());
 
             if status == "only_fc" {
                 all_missing.push(row);
@@ -143,22 +136,14 @@ pub fn run(args: ValidateCohortArgs) -> Result<()> {
                 continue;
             }
 
-            let gene_a = parts[0].to_string();
-            let gene_b = parts[1].to_string();
-            let status = parts[2].to_string();
-            let is_focus = focus_genes.contains(&gene_a.to_uppercase())
-                || focus_genes.contains(&gene_b.to_uppercase());
+            let Some(row) = parse_validation_row(&sample_id, &parts) else {
+                continue;
+            };
+            let is_focus = focus_genes.contains(&row.gene_5p.to_uppercase())
+                || focus_genes.contains(&row.gene_3p.to_uppercase());
 
-            if is_focus && status == "only_fc" {
-                focus_missing.push(CandidateRow {
-                    sample_id: sample_id.clone(),
-                    gene_a,
-                    gene_b,
-                    status,
-                    fc_spanning: parts[3].to_string(),
-                    star_unique_reads: parts[4].to_string(),
-                    fc_source: parts[5].to_string(),
-                });
+            if is_focus && row.status == "only_fc" {
+                focus_missing.push(row);
             }
         }
 
@@ -260,15 +245,17 @@ fn write_rows(path: &Path, rows: &[CandidateRow]) -> Result<()> {
     let mut w = BufWriter::new(fs::File::create(path)?);
     writeln!(
         w,
-        "sample_id\tgene_a\tgene_b\tstatus\tfc_spanning\tstar_unique_reads\tfc_source"
+        "sample_id\tgene_5p\tgene_3p\tunordered_gene_a\tunordered_gene_b\tstatus\tfc_spanning\tstar_unique_reads\tfc_source"
     )?;
     for r in rows {
         writeln!(
             w,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             r.sample_id,
-            r.gene_a,
-            r.gene_b,
+            r.gene_5p,
+            r.gene_3p,
+            r.unordered_gene_a,
+            r.unordered_gene_b,
             r.status,
             r.fc_spanning,
             r.star_unique_reads,
@@ -276,4 +263,36 @@ fn write_rows(path: &Path, rows: &[CandidateRow]) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+fn parse_validation_row(sample_id: &str, parts: &[&str]) -> Option<CandidateRow> {
+    if parts.len() >= 8 {
+        Some(CandidateRow {
+            sample_id: sample_id.to_string(),
+            gene_5p: parts[0].to_string(),
+            gene_3p: parts[1].to_string(),
+            unordered_gene_a: parts[2].to_string(),
+            unordered_gene_b: parts[3].to_string(),
+            status: parts[4].to_string(),
+            fc_spanning: parts[5].to_string(),
+            star_unique_reads: parts[6].to_string(),
+            fc_source: parts[7].to_string(),
+        })
+    } else if parts.len() >= 6 {
+        let mut unordered = [parts[0], parts[1]];
+        unordered.sort();
+        Some(CandidateRow {
+            sample_id: sample_id.to_string(),
+            gene_5p: parts[0].to_string(),
+            gene_3p: parts[1].to_string(),
+            unordered_gene_a: unordered[0].to_string(),
+            unordered_gene_b: unordered[1].to_string(),
+            status: parts[2].to_string(),
+            fc_spanning: parts[3].to_string(),
+            star_unique_reads: parts[4].to_string(),
+            fc_source: parts[5].to_string(),
+        })
+    } else {
+        None
+    }
 }

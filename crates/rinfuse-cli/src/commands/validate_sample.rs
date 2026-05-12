@@ -1,6 +1,6 @@
 use crate::args::ValidateSampleArgs;
 use anyhow::Result;
-use rinfuse_core::FusionCandidateLite;
+use rinfuse_core::{FusionCandidateLite, OrientedFusionPair};
 use rinfuse_io::fc_intermediates::{FcCandidateWithSource, FcOutputDir};
 use rinfuse_io::{ReadRegistry, ReadRegistryBuildOptions};
 use serde_json::json;
@@ -8,17 +8,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct NormalizedPair(String, String);
-
-impl NormalizedPair {
-    fn new(a: &str, b: &str) -> Self {
-        let mut genes = [a.to_uppercase(), b.to_uppercase()];
-        genes.sort();
-        Self(genes[0].clone(), genes[1].clone())
-    }
-}
 
 pub fn run(args: ValidateSampleArgs) -> Result<()> {
     if !args.out.exists() {
@@ -44,22 +33,22 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
     }
 
     // 4. Compare
-    let mut fc_map: HashMap<NormalizedPair, Vec<&FcCandidateWithSource>> = HashMap::new();
+    let mut fc_map: HashMap<OrientedFusionPair, Vec<&FcCandidateWithSource>> = HashMap::new();
     for cand in &fc_candidates {
-        let pair = NormalizedPair::new(&cand.gene_5p, &cand.gene_3p);
+        let pair = OrientedFusionPair::new(&cand.gene_5p, &cand.gene_3p);
         fc_map.entry(pair).or_default().push(cand);
     }
 
-    let mut star_map: HashMap<NormalizedPair, Vec<&FusionCandidateLite>> = HashMap::new();
+    let mut star_map: HashMap<OrientedFusionPair, Vec<&FusionCandidateLite>> = HashMap::new();
     for cand in &star_candidates {
-        let pair = NormalizedPair::new(&cand.gene_a, &cand.gene_b);
+        let pair = OrientedFusionPair::new(&cand.gene_5p, &cand.gene_3p);
         star_map.entry(pair).or_default().push(cand);
     }
 
-    let mut all_pairs: HashSet<NormalizedPair> = fc_map.keys().cloned().collect();
+    let mut all_pairs: HashSet<OrientedFusionPair> = fc_map.keys().cloned().collect();
     all_pairs.extend(star_map.keys().cloned());
-    let mut sorted_pairs: Vec<NormalizedPair> = all_pairs.into_iter().collect();
-    sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let mut sorted_pairs: Vec<OrientedFusionPair> = all_pairs.into_iter().collect();
+    sorted_pairs.sort_by(|a, b| a.gene_5p.cmp(&b.gene_5p).then(a.gene_3p.cmp(&b.gene_3p)));
 
     let mut shared_count = 0;
     let mut only_fc_count = 0;
@@ -88,7 +77,8 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
     let mut w_missing = BufWriter::new(fs::File::create(args.out.join("missing_from_star.tsv"))?);
     let mut w_recovered = BufWriter::new(fs::File::create(args.out.join("recovered_by_star.tsv"))?);
 
-    let header = "gene_a\tgene_b\tstatus\tfc_spanning\tstar_unique_reads\tfc_source";
+    let header =
+        "gene_5p\tgene_3p\tunordered_gene_a\tunordered_gene_b\tstatus\tfc_spanning\tstar_unique_reads\tfc_source";
     writeln!(w_fc_star, "{}", header)?;
     if let Some(w) = &mut w_focus {
         writeln!(w, "{}", header)?;
@@ -116,7 +106,8 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
             _ => unreachable!(),
         };
 
-        let is_focus = focus_genes.contains(&pair.0) || focus_genes.contains(&pair.1);
+        let is_focus = focus_genes.contains(&pair.gene_5p.to_uppercase())
+            || focus_genes.contains(&pair.gene_3p.to_uppercase());
         if is_focus && has_fc && !has_star {
             missing_from_star.push(pair.clone());
         }
@@ -133,10 +124,18 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
         let fc_source = fc_cand
             .map(|c| c.source.display().to_string())
             .unwrap_or_else(|| "-".to_string());
+        let unordered = pair.unordered();
 
         let row = format!(
-            "{}\t{}\t{}\t{}\t{}\t{}",
-            pair.0, pair.1, status, fc_spanning, star_reads, fc_source
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            pair.gene_5p,
+            pair.gene_3p,
+            unordered.gene_a,
+            unordered.gene_b,
+            status,
+            fc_spanning,
+            star_reads,
+            fc_source
         );
 
         writeln!(w_fc_star, "{}", row)?;
@@ -179,7 +178,7 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
     writeln!(w_sum, "# Sample Validation Summary\n")?;
     writeln!(w_sum, "- **FusionCatcher Total**: {}", fc_map.len())?;
     writeln!(w_sum, "- **STAR Candidates Total**: {}", star_map.len())?;
-    writeln!(w_sum, "- **Shared**: {}", shared_count)?;
+    writeln!(w_sum, "- **Shared (orientation-aware)**: {}", shared_count)?;
     writeln!(w_sum, "- **Only FusionCatcher**: {}", only_fc_count)?;
     writeln!(w_sum, "- **Only STAR (rinfuse)**: {}", only_star_count)?;
 
@@ -190,7 +189,7 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
         } else {
             writeln!(w_sum, "### Focus candidates missing from STAR:")?;
             for p in &missing_from_star {
-                writeln!(w_sum, "- {} -- {}", p.0, p.1)?;
+                writeln!(w_sum, "- {} -> {}", p.gene_5p, p.gene_3p)?;
             }
         }
     }

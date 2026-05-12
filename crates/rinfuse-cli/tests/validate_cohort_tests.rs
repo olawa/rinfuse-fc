@@ -52,13 +52,13 @@ mod validate_cohort_tests {
 
         // Check all_missing_from_star
         let missing = fs::read_to_string(out.join("all_missing_from_star.tsv")).unwrap();
-        assert!(missing.contains("sample1\tETV6\tRUNX1\tonly_fc"));
-        assert!(missing.contains("sample2\tDUX4\tIGH\tonly_fc"));
+        assert!(missing.contains("sample1\tETV6\tRUNX1\tETV6\tRUNX1\tonly_fc"));
+        assert!(missing.contains("sample2\tDUX4\tIGH\tDUX4\tIGH\tonly_fc"));
 
         // Check focus_missing
         let focus = fs::read_to_string(out.join("focus_missing.tsv")).unwrap();
         assert!(!focus.contains("ETV6")); // Not a focus gene
-        assert!(focus.contains("sample2\tDUX4\tIGH\tonly_fc"));
+        assert!(focus.contains("sample2\tDUX4\tIGH\tDUX4\tIGH\tonly_fc"));
 
         // Check cohort summary md
         let md = fs::read_to_string(out.join("cohort_summary.md")).unwrap();

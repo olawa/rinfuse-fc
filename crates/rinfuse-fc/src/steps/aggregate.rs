@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
-use rinfuse_core::{FusionCandidateLite, GeneAnnotationIndex, StarChimericJunction};
+use rinfuse_core::{
+    FusionCandidateLite, GeneAnnotationIndex, OrientedFusionPair, StarChimericJunction,
+};
 use rinfuse_io::annotation::parse_gene_intervals;
 use rinfuse_io::star::parse_chimeric_junctions;
 use std::collections::{HashMap, HashSet};
@@ -17,43 +19,29 @@ pub fn aggregate_star_junctions(
 
     let junctions = load_junctions(junctions_path).context("Failed to load STAR junctions")?;
 
-    let mut candidate_map: HashMap<(String, String), CandidateAggregator> = HashMap::new();
+    let mut candidate_map: HashMap<OrientedFusionPair, CandidateAggregator> = HashMap::new();
 
     for j in junctions {
+        let seg1_lookup = j.pos1_lookup_0based().unwrap_or(0);
+        let seg2_lookup = j.pos2_lookup_0based().unwrap_or(0);
         let hit1 = index
-            .lookup(&j.seg1.chrom, j.seg1.genomic_pos)
+            .lookup(&j.seg1.chrom, seg1_lookup)
             .unwrap_or_else(|| FusionCandidateLite::unknown_hit(&j.seg1.chrom));
 
         let hit2 = index
-            .lookup(&j.seg2.chrom, j.seg2.genomic_pos)
+            .lookup(&j.seg2.chrom, seg2_lookup)
             .unwrap_or_else(|| FusionCandidateLite::unknown_hit(&j.seg2.chrom));
 
-        // Create an order-insensitive key based on gene symbols
-        let mut genes = [
-            (
-                hit1.gene_symbol.clone(),
-                hit1.gene_id.clone(),
-                j.seg1.chrom.clone(),
-            ),
-            (
-                hit2.gene_symbol.clone(),
-                hit2.gene_id.clone(),
-                j.seg2.chrom.clone(),
-            ),
-        ];
-        genes.sort_by(|a, b| a.0.cmp(&b.0)); // Sort by symbol
-
-        let key = (genes[0].0.clone(), genes[1].0.clone());
+        let key = OrientedFusionPair::new(&hit1.gene_symbol, &hit2.gene_symbol);
 
         let agg = candidate_map
-            .entry(key)
+            .entry(key.clone())
             .or_insert_with(|| CandidateAggregator {
-                gene_a: genes[0].0.clone(),
-                gene_b: genes[1].0.clone(),
-                gene_id_a: genes[0].1.clone(),
-                gene_id_b: genes[1].1.clone(),
-                chrom_a: genes[0].2.clone(),
-                chrom_b: genes[1].2.clone(),
+                pair: key,
+                gene_id_5p: hit1.gene_id.clone(),
+                gene_id_3p: hit2.gene_id.clone(),
+                chrom_5p: j.seg1.chrom.clone(),
+                chrom_3p: j.seg2.chrom.clone(),
                 junctions: Vec::new(),
             });
 
@@ -66,7 +54,12 @@ pub fn aggregate_star_junctions(
         .collect();
 
     // Sort by unique read count descending for stable output
-    candidates.sort_by(|a, b| b.unique_read_count.cmp(&a.unique_read_count));
+    candidates.sort_by(|a, b| {
+        b.unique_read_count
+            .cmp(&a.unique_read_count)
+            .then(a.gene_5p.cmp(&b.gene_5p))
+            .then(a.gene_3p.cmp(&b.gene_3p))
+    });
 
     Ok(candidates)
 }
@@ -94,12 +87,11 @@ fn load_junctions(path: &Path) -> Result<Vec<StarChimericJunction>> {
 }
 
 struct CandidateAggregator {
-    gene_a: String,
-    gene_b: String,
-    gene_id_a: String,
-    gene_id_b: String,
-    chrom_a: String,
-    chrom_b: String,
+    pair: OrientedFusionPair,
+    gene_id_5p: String,
+    gene_id_3p: String,
+    chrom_5p: String,
+    chrom_3p: String,
     junctions: Vec<StarChimericJunction>,
 }
 
@@ -112,7 +104,7 @@ impl CandidateAggregator {
 
         for j in &self.junctions {
             unique_reads.insert(j.read_name.clone());
-            max_overhang = max_overhang.max(j.max_overhang);
+            max_overhang = max_overhang.max(j.max_overhang.unwrap_or(0));
             junction_types.insert(j.junction_type);
 
             if example_reads.len() < 5 {
@@ -123,13 +115,23 @@ impl CandidateAggregator {
         let mut junction_types: Vec<i32> = junction_types.into_iter().collect();
         junction_types.sort_unstable();
 
+        let unordered = self.pair.unordered();
+        let gene_5p = self.pair.gene_5p;
+        let gene_3p = self.pair.gene_3p;
+        let gene_id_5p = self.gene_id_5p;
+        let gene_id_3p = self.gene_id_3p;
+        let chrom_5p = self.chrom_5p;
+        let chrom_3p = self.chrom_3p;
+
         FusionCandidateLite {
-            gene_a: self.gene_a,
-            gene_b: self.gene_b,
-            gene_id_a: self.gene_id_a,
-            gene_id_b: self.gene_id_b,
-            chrom_a: self.chrom_a,
-            chrom_b: self.chrom_b,
+            gene_5p,
+            gene_3p,
+            unordered_gene_a: unordered.gene_a,
+            unordered_gene_b: unordered.gene_b,
+            gene_id_5p,
+            gene_id_3p,
+            chrom_5p,
+            chrom_3p,
             support_junction_count: self.junctions.len() as u32,
             unique_read_count: unique_reads.len() as u32,
             max_overhang,
