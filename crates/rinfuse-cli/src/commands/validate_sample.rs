@@ -99,11 +99,20 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
     for pair in &sorted_pairs {
         let has_fc = fc_map.contains_key(pair);
         let has_star = star_map.contains_key(pair);
-        
+
         let status = match (has_fc, has_star) {
-            (true, true) => { shared_count += 1; "shared" },
-            (true, false) => { only_fc_count += 1; "only_fc" },
-            (false, true) => { only_star_count += 1; "only_star" },
+            (true, true) => {
+                shared_count += 1;
+                "shared"
+            }
+            (true, false) => {
+                only_fc_count += 1;
+                "only_fc"
+            }
+            (false, true) => {
+                only_star_count += 1;
+                "only_star"
+            }
             _ => unreachable!(),
         };
 
@@ -115,9 +124,15 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
         let fc_cand = fc_map.get(pair).and_then(|v| v.first());
         let star_cand = star_map.get(pair).and_then(|v| v.first());
 
-        let fc_spanning = fc_cand.and_then(|c| c.spanning_pairs.map(|v| v.to_string())).unwrap_or_else(|| "-".to_string());
-        let star_reads = star_cand.map(|c| c.unique_read_count.to_string()).unwrap_or_else(|| "-".to_string());
-        let fc_source = fc_cand.map(|c| c.source.display().to_string()).unwrap_or_else(|| "-".to_string());
+        let fc_spanning = fc_cand
+            .and_then(|c| c.spanning_pairs.map(|v| v.to_string()))
+            .unwrap_or_else(|| "-".to_string());
+        let star_reads = star_cand
+            .map(|c| c.unique_read_count.to_string())
+            .unwrap_or_else(|| "-".to_string());
+        let fc_source = fc_cand
+            .map(|c| c.source.display().to_string())
+            .unwrap_or_else(|| "-".to_string());
 
         let row = format!(
             "{}\t{}\t{}\t{}\t{}\t{}",
@@ -130,7 +145,7 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
                 writeln!(w, "{}", row)?;
             }
         }
-        
+
         if has_fc && !has_star {
             writeln!(w_missing, "{}", row)?;
         } else if !has_fc && has_star {
@@ -147,14 +162,20 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
             "{}\t{}\t{}\t{}\t{}",
             cand.gene_5p,
             cand.gene_3p,
-            cand.spanning_pairs.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
-            cand.split_reads.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
+            cand.spanning_pairs
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            cand.split_reads
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             cand.source.display()
         )?;
     }
 
     // 6. Write Markdown Summary
-    let mut w_sum = BufWriter::new(fs::File::create(args.out.join("sample_validation_summary.md"))?);
+    let mut w_sum = BufWriter::new(fs::File::create(
+        args.out.join("sample_validation_summary.md"),
+    )?);
     writeln!(w_sum, "# Sample Validation Summary\n")?;
     writeln!(w_sum, "- **FusionCatcher Total**: {}", fc_map.len())?;
     writeln!(w_sum, "- **STAR Candidates Total**: {}", star_map.len())?;
@@ -194,7 +215,10 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
 
     eprintln!(
         "Validation complete: shared={} only_fc={} only_star={} -> {}",
-        shared_count, only_fc_count, only_star_count, args.out.display()
+        shared_count,
+        only_fc_count,
+        only_star_count,
+        args.out.display()
     );
 
     Ok(())
@@ -202,14 +226,17 @@ pub fn run(args: ValidateSampleArgs) -> Result<()> {
 
 fn load_star_candidates(path: &Path) -> Result<Vec<FusionCandidateLite>> {
     let mut candidates = Vec::new();
-    
+
     // Check if it's a directory
     let actual_path = if path.is_dir() {
         let jsonl = path.join("star_candidates.jsonl");
         if jsonl.exists() {
             jsonl
         } else {
-            anyhow::bail!("star_candidates.jsonl not found in directory {}", path.display());
+            anyhow::bail!(
+                "star_candidates.jsonl not found in directory {}",
+                path.display()
+            );
         }
     } else {
         path.to_path_buf()
@@ -222,7 +249,9 @@ fn load_star_candidates(path: &Path) -> Result<Vec<FusionCandidateLite>> {
     if actual_path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
         for line in reader.lines() {
             let line = line?;
-            if line.trim().is_empty() { continue; }
+            if line.trim().is_empty() {
+                continue;
+            }
             let cand: FusionCandidateLite = serde_json::from_str(&line)?;
             candidates.push(cand);
         }
@@ -230,6 +259,6 @@ fn load_star_candidates(path: &Path) -> Result<Vec<FusionCandidateLite>> {
         // Assume TSV. Let's just require JSONL for simplicity since aggregate-star writes it.
         anyhow::bail!("Please provide the JSONL star candidates file (star_candidates.jsonl) or the directory containing it.");
     }
-    
+
     Ok(candidates)
 }

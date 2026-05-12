@@ -59,7 +59,11 @@ impl StarStep {
             "Unsorted".to_string(),
         ]);
 
-        if self.reads.iter().any(|r| r.extension().is_some_and(|e| e == "gz")) {
+        if self
+            .reads
+            .iter()
+            .any(|r| r.extension().is_some_and(|e| e == "gz"))
+        {
             args.push("--readFilesCommand".to_string());
             args.push("zcat".to_string());
         }

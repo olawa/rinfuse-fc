@@ -11,7 +11,8 @@ pub fn aggregate_star_junctions(
     junctions_path: &Path,
     genes_path: &Path,
 ) -> Result<Vec<FusionCandidateLite>> {
-    let (intervals, _) = parse_gene_intervals(genes_path).context("Failed to parse gene intervals")?;
+    let (intervals, _) =
+        parse_gene_intervals(genes_path).context("Failed to parse gene intervals")?;
     let index = GeneAnnotationIndex::new(intervals);
 
     let junctions = load_junctions(junctions_path).context("Failed to load STAR junctions")?;
@@ -19,31 +20,43 @@ pub fn aggregate_star_junctions(
     let mut candidate_map: HashMap<(String, String), CandidateAggregator> = HashMap::new();
 
     for j in junctions {
-        let hit1 = index.lookup(&j.seg1.chrom, j.seg1.genomic_pos)
+        let hit1 = index
+            .lookup(&j.seg1.chrom, j.seg1.genomic_pos)
             .unwrap_or_else(|| FusionCandidateLite::unknown_hit(&j.seg1.chrom));
-        
-        let hit2 = index.lookup(&j.seg2.chrom, j.seg2.genomic_pos)
+
+        let hit2 = index
+            .lookup(&j.seg2.chrom, j.seg2.genomic_pos)
             .unwrap_or_else(|| FusionCandidateLite::unknown_hit(&j.seg2.chrom));
 
         // Create an order-insensitive key based on gene symbols
         let mut genes = [
-            (hit1.gene_symbol.clone(), hit1.gene_id.clone(), j.seg1.chrom.clone()),
-            (hit2.gene_symbol.clone(), hit2.gene_id.clone(), j.seg2.chrom.clone()),
+            (
+                hit1.gene_symbol.clone(),
+                hit1.gene_id.clone(),
+                j.seg1.chrom.clone(),
+            ),
+            (
+                hit2.gene_symbol.clone(),
+                hit2.gene_id.clone(),
+                j.seg2.chrom.clone(),
+            ),
         ];
         genes.sort_by(|a, b| a.0.cmp(&b.0)); // Sort by symbol
 
         let key = (genes[0].0.clone(), genes[1].0.clone());
 
-        let agg = candidate_map.entry(key).or_insert_with(|| CandidateAggregator {
-            gene_a: genes[0].0.clone(),
-            gene_b: genes[1].0.clone(),
-            gene_id_a: genes[0].1.clone(),
-            gene_id_b: genes[1].1.clone(),
-            chrom_a: genes[0].2.clone(),
-            chrom_b: genes[1].2.clone(),
-            junctions: Vec::new(),
-        });
-        
+        let agg = candidate_map
+            .entry(key)
+            .or_insert_with(|| CandidateAggregator {
+                gene_a: genes[0].0.clone(),
+                gene_b: genes[1].0.clone(),
+                gene_id_a: genes[0].1.clone(),
+                gene_id_b: genes[1].1.clone(),
+                chrom_a: genes[0].2.clone(),
+                chrom_b: genes[1].2.clone(),
+                junctions: Vec::new(),
+            });
+
         agg.junctions.push(j);
     }
 
@@ -101,7 +114,7 @@ impl CandidateAggregator {
             unique_reads.insert(j.read_name.clone());
             max_overhang = max_overhang.max(j.max_overhang);
             junction_types.insert(j.junction_type);
-            
+
             if example_reads.len() < 5 {
                 example_reads.push(j.read_name.clone());
             }

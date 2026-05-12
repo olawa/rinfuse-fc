@@ -57,7 +57,7 @@ mod validate_sample_tests {
 
         // ETV6 is missing from STAR
         assert!(summary.contains("- ETV6 -- RUNX1"));
-        
+
         let missing = fs::read_to_string(out.join("missing_from_star.tsv")).unwrap();
         assert!(missing.contains("ETV6\tRUNX1\tonly_fc"));
 

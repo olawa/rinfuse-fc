@@ -19,5 +19,6 @@ fn main() -> Result<()> {
         Commands::ParseStar(args) => commands::parse_star::run(args),
         Commands::AggregateStar(args) => commands::aggregate_star::run(args),
         Commands::ValidateSample(args) => commands::validate_sample::run(args),
+        Commands::ValidateCohort(args) => commands::validate_cohort::run(args),
     }
 }

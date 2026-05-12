@@ -1,15 +1,16 @@
 use crate::args::RunStarArgs;
-use anyhow::Result;
+use crate::commands::aggregate_star::write_outputs as write_candidates;
+use anyhow::{anyhow, Result};
+use rinfuse_fc::steps::aggregate::aggregate_star_junctions;
 use rinfuse_fc::steps::star::StarStep;
 use rinfuse_io::star::{
     parse_chimeric_junctions, write_junctions_jsonl, write_junctions_tsv, write_parse_summary,
 };
-use rinfuse_fc::steps::aggregate::aggregate_star_junctions;
-use crate::commands::aggregate_star::write_outputs as write_candidates;
 use rinfuse_orchestrator::{
     manifest::{StepManifest, StepStatus},
-    timing, OrchestratorError, RunManifest,
+    timing,
     workdir::WorkDir,
+    OrchestratorError, RunManifest,
 };
 use std::fs;
 use std::io::BufWriter;
@@ -37,9 +38,21 @@ pub fn run(args: RunStarArgs) -> Result<()> {
     let res_result = runner.run();
     let end_time = chrono::Utc::now();
 
+    let mut command_failure = None;
     let (res, status) = match res_result {
         Ok(r) => (r, StepStatus::Completed),
-        Err(OrchestratorError::CommandFailed { result, .. }) => (*result, StepStatus::Failed),
+        Err(OrchestratorError::CommandFailed {
+            program,
+            exit_code,
+            result,
+        }) => {
+            command_failure = Some(anyhow!(
+                "command '{}' failed with exit code {:?}",
+                program,
+                exit_code
+            ));
+            (*result, StepStatus::Failed)
+        }
         Err(e) => return Err(e.into()),
     };
 
@@ -67,6 +80,10 @@ pub fn run(args: RunStarArgs) -> Result<()> {
 
     let mut ow = BufWriter::new(fs::File::create(args.out.join("star_outputs.json"))?);
     serde_json::to_writer_pretty(&mut ow, &outputs)?;
+
+    if let Some(err) = command_failure {
+        return Err(err);
+    }
 
     // Optionally parse Chimeric.out.junction
     if args.parse {

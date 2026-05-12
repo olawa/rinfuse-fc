@@ -5,4 +5,5 @@ pub mod inspect_fc;
 pub mod parse_star;
 pub mod run_command;
 pub mod run_star;
+pub mod validate_cohort;
 pub mod validate_sample;

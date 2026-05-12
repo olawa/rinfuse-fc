@@ -37,7 +37,11 @@ pub fn parse_gene_intervals(path: &Path) -> Result<(Vec<GeneInterval>, Annotatio
                 report.skipped += 1;
                 continue;
             }
-            report.warnings.push(format!("line {}: expected >=6 fields, got {}", line_number, fields.len()));
+            report.warnings.push(format!(
+                "line {}: expected >=6 fields, got {}",
+                line_number,
+                fields.len()
+            ));
             continue;
         }
 
@@ -48,11 +52,14 @@ pub fn parse_gene_intervals(path: &Path) -> Result<(Vec<GeneInterval>, Annotatio
         }
 
         let chrom = fields[0].to_string();
-        
+
         let start_0based = match fields[1].parse::<u64>() {
             Ok(v) => v,
             Err(_) => {
-                report.warnings.push(format!("line {}: invalid start '{}'", line_number, fields[1]));
+                report.warnings.push(format!(
+                    "line {}: invalid start '{}'",
+                    line_number, fields[1]
+                ));
                 continue;
             }
         };
@@ -60,13 +67,18 @@ pub fn parse_gene_intervals(path: &Path) -> Result<(Vec<GeneInterval>, Annotatio
         let end_0based = match fields[2].parse::<u64>() {
             Ok(v) => v,
             Err(_) => {
-                report.warnings.push(format!("line {}: invalid end '{}'", line_number, fields[2]));
+                report
+                    .warnings
+                    .push(format!("line {}: invalid end '{}'", line_number, fields[2]));
                 continue;
             }
         };
 
         if start_0based >= end_0based {
-            report.warnings.push(format!("line {}: start {} >= end {}", line_number, start_0based, end_0based));
+            report.warnings.push(format!(
+                "line {}: start {} >= end {}",
+                line_number, start_0based, end_0based
+            ));
             continue;
         }
 
@@ -75,7 +87,10 @@ pub fn parse_gene_intervals(path: &Path) -> Result<(Vec<GeneInterval>, Annotatio
             "-" => Strand::Minus,
             "." => Strand::Unknown,
             _ => {
-                report.warnings.push(format!("line {}: invalid strand '{}'", line_number, fields[3]));
+                report.warnings.push(format!(
+                    "line {}: invalid strand '{}'",
+                    line_number, fields[3]
+                ));
                 continue;
             }
         };
@@ -100,8 +115,8 @@ pub fn parse_gene_intervals(path: &Path) -> Result<(Vec<GeneInterval>, Annotatio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_parse_gene_intervals() {
@@ -114,7 +129,7 @@ chr2\t5000\t6000\t-\tENSG000002\tGENE_B\n\
 chr3\tbad\t2000\t+\tE3\tG3\n\
 chr4\t2000\t1000\t+\tE4\tG4\n\
 chr5\t100\t200\tx\tE5\tG5\n";
-        
+
         fs::write(&path, content).unwrap();
 
         let (intervals, report) = parse_gene_intervals(&path).unwrap();
@@ -122,7 +137,7 @@ chr5\t100\t200\tx\tE5\tG5\n";
         assert_eq!(intervals.len(), 2);
         assert_eq!(intervals[0].gene_symbol, "GENE_A");
         assert_eq!(intervals[1].gene_symbol, "GENE_B");
-        
+
         // 7 lines total: 1 header, 2 valid, 1 comment, 3 invalid
         assert_eq!(report.total_lines, 7);
         assert_eq!(report.parsed_ok, 2);

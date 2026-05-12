@@ -6,8 +6,7 @@ use std::path::PathBuf;
 use tempfile::tempdir;
 
 fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/Chimeric.out.junction")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/Chimeric.out.junction")
 }
 
 #[test]
@@ -35,8 +34,11 @@ fn parses_fixture_file_three_valid_rows() {
 fn malformed_row_produces_warning_not_panic() {
     let temp = tempdir().unwrap();
     let bad_file = temp.path().join("bad.junction");
-    fs::write(&bad_file, "chr1\tBAD_POS\t+\tchr2\t100\t-\t1\t0\t0\tREAD\t0\t50M\t0\t50M\n")
-        .unwrap();
+    fs::write(
+        &bad_file,
+        "chr1\tBAD_POS\t+\tchr2\t100\t-\t1\t0\t0\tREAD\t0\t50M\t0\t50M\n",
+    )
+    .unwrap();
 
     let (junctions, report) = parse_chimeric_junctions(&bad_file).unwrap();
 

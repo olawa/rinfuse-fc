@@ -34,6 +34,24 @@ pub enum Commands {
 
     /// Validate sample by comparing FusionCatcher outputs against rinfuse-fc STAR candidates.
     ValidateSample(ValidateSampleArgs),
+
+    /// Summarize multiple sample validation reports into a cohort-level report.
+    ValidateCohort(ValidateCohortArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ValidateCohortArgs {
+    /// Validation directories to aggregate (repeatable).
+    #[arg(long)]
+    pub validation_dir: Vec<PathBuf>,
+
+    /// Output directory for cohort reports.
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Optional focus genes (repeatable or comma-separated).
+    #[arg(long, value_delimiter = ',')]
+    pub focus_gene: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -58,7 +76,6 @@ pub struct ValidateSampleArgs {
     #[arg(long, value_delimiter = ',')]
     pub focus_gene: Vec<String>,
 }
-
 
 #[derive(Debug, Args)]
 pub struct AggregateStarArgs {

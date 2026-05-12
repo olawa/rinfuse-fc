@@ -30,9 +30,9 @@ pub fn run(args: AggregateStarArgs) -> Result<()> {
                 focus_candidates.push(c.clone());
             }
         }
-        
+
         write_outputs(&args.out, "focus_star", &focus_candidates)?;
-        
+
         eprintln!(
             "Aggregated {} focus candidates (filtered by {:?}) -> {}",
             focus_candidates.len(),
@@ -75,7 +75,12 @@ pub fn write_outputs(
         "gene_a\tgene_b\tgene_id_a\tgene_id_b\tchrom_a\tchrom_b\tsupport_junction_count\tunique_read_count\tmax_overhang\tjunction_types\texample_reads"
     )?;
     for c in candidates {
-        let jtypes = c.junction_types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(",");
+        let jtypes = c
+            .junction_types
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         let reads = c.example_reads.join(",");
         writeln!(
             w_tsv,

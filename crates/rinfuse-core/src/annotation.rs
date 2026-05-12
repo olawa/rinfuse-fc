@@ -37,12 +37,12 @@ impl GeneAnnotationIndex {
                 .or_default()
                 .push(interval);
         }
-        
+
         // Sort intervals within each chromosome by start position
         for intervals in chrom_intervals.values_mut() {
             intervals.sort_by_key(|i| i.start_0based);
         }
-        
+
         Self { chrom_intervals }
     }
 

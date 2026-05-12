@@ -24,7 +24,9 @@ pub struct ParseWarning {
 /// Parse a STAR `Chimeric.out.junction` file.
 ///
 /// Returns all successfully parsed junctions plus a report with warnings.
-pub fn parse_chimeric_junctions(path: &Path) -> Result<(Vec<StarChimericJunction>, StarParseReport)> {
+pub fn parse_chimeric_junctions(
+    path: &Path,
+) -> Result<(Vec<StarChimericJunction>, StarParseReport)> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
@@ -104,9 +106,12 @@ fn parse_junction_row(
         .map_err(|_| format!("line {}: invalid pos2 '{}'", line_number, fields[4]))?;
     let strand2 = parse_strand(fields[5], line_number, "strand2")?;
 
-    let junction_type = fields[6]
-        .parse::<i32>()
-        .map_err(|_| format!("line {}: invalid junction_type '{}'", line_number, fields[6]))?;
+    let junction_type = fields[6].parse::<i32>().map_err(|_| {
+        format!(
+            "line {}: invalid junction_type '{}'",
+            line_number, fields[6]
+        )
+    })?;
 
     let repeat_left = fields[7]
         .parse::<u32>()
@@ -169,18 +174,12 @@ fn parse_strand(s: &str, line: usize, field: &str) -> std::result::Result<Strand
         "+" => Ok(Strand::Plus),
         "-" => Ok(Strand::Minus),
         "." => Ok(Strand::Unknown),
-        other => Err(format!(
-            "line {}: invalid {}: '{}'",
-            line, field, other
-        )),
+        other => Err(format!("line {}: invalid {}: '{}'", line, field, other)),
     }
 }
 
 /// Write junctions as newline-delimited JSON (one JSON object per line).
-pub fn write_junctions_jsonl(
-    path: &Path,
-    junctions: &[StarChimericJunction],
-) -> Result<()> {
+pub fn write_junctions_jsonl(path: &Path, junctions: &[StarChimericJunction]) -> Result<()> {
     let mut w = BufWriter::new(File::create(path)?);
     for j in junctions {
         let line = serde_json::to_string(j)?;
@@ -190,10 +189,7 @@ pub fn write_junctions_jsonl(
 }
 
 /// Write junctions as a TSV file with a header row.
-pub fn write_junctions_tsv(
-    path: &Path,
-    junctions: &[StarChimericJunction],
-) -> Result<()> {
+pub fn write_junctions_tsv(path: &Path, junctions: &[StarChimericJunction]) -> Result<()> {
     let mut w = BufWriter::new(File::create(path)?);
     writeln!(w, "{}", StarChimericJunction::tsv_header())?;
     for j in junctions {
